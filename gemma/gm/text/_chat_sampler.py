@@ -28,7 +28,6 @@ from gemma.gm.text import _sampler
 from gemma.gm.text import _sampler_loop
 from gemma.gm.text import _sampling
 from gemma.gm.text import _template
-from gemma.gm.text import _thinking_utils
 from gemma.gm.text import _tokenizer
 from gemma.gm.typing import _common
 # from gemma.gm.vision import _token_utils
@@ -109,9 +108,6 @@ class ChatSampler:
       channel block (Gemma 4 only). When the budget is exhausted, the sampler
       forces an exit from the thinking block. Set to -1 to disable (no limit).
       Recommended values: 4096-8192 for typical use cases.
-    multi_turn_refresh_threshold: Number of conversation turns after which a
-      warning is emitted suggesting context refresh. Set to 0 to disable.
-      Default: 10.
     last_state: Last state of the sampler, automatically handled by the sampler,
       but exposed for power users to access the logits, cache, ... or initialize
       the sampler.
@@ -143,7 +139,6 @@ class ChatSampler:
   audio_sample_rate: int = 16000
   audio_seq_length: int = 750
   max_thinking_tokens: int = -1
-  multi_turn_refresh_threshold: int = 10
 
   # Internal variables, but exposed for power users.
 
@@ -389,25 +384,6 @@ class ChatSampler:
         add_tool_response_tag_after_call=not is_legacy_tool_answer,
     )
 
-    # --- System prompt length checking ---
-    # Check if the system prompt portion of the conversation is too long.
-    # This helps prevent degraded instruction following for long system prompts.
-    if self.tokenizer is not None:
-      try:
-        prompt_tokens = self.tokenizer.encode(prompt_text, add_bos=False)
-        num_prompt_tokens = len(prompt_tokens)
-        # Check if this is the first turn (system prompt is typically in the
-        # first user message) or if the prompt contains a system prompt.
-        if len(self.turns) == 0 and num_prompt_tokens > 0:
-          system_config = _thinking_utils.SystemPromptConfig()
-          warnings_list = system_config.check_system_prompt_length(
-              num_prompt_tokens
-          )
-          for w in warnings_list:
-            warnings.warn(w, UserWarning, stacklevel=2)
-      except (ValueError, TypeError, KeyError):  # Tokenization failures.
-        pass
-
     # --- Dispatch to the correct sampler ---
     out = self._sample(
         prompt_text,
@@ -436,20 +412,6 @@ class ChatSampler:
     self.turns.append(_template.Prompt(prompt_text))
     self.turns.append(_template.Response(out.text))
     object.__setattr__(self, 'last_state', out.state)
-
-    # --- Multi-turn context management ---
-    # Check if context refresh is needed after many turns.
-    num_turns = len(self.turns) // 2  # Each turn is a prompt + response pair
-    if _thinking_utils.should_refresh_context(
-        num_turns, self.multi_turn_refresh_threshold
-    ):
-      warnings.warn(
-          f'Conversation has {num_turns} turns. For best results with Gemma 4, '
-          'consider starting a new conversation or re-injecting key system '
-          'prompt instructions. Long conversations may cause context loss.',
-          UserWarning,
-          stacklevel=2,
-      )
 
     return out.text  # pytype: disable=bad-return-type
 
