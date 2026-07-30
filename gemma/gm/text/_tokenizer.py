@@ -12,7 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tokenizer API."""
+"""Tokenizer API.
+
+Provides tokenization and detokenization for all Gemma model versions (2, 3,
+3n, 4). Defines the SpecialTokens interface and version-specific token
+enums including multimodal, tool, and thinking channel tokens.
+
+The thinking channel tokens (BEGIN_OF_THINKING_CHANNEL, END_OF_THINKING_CHANNEL)
+delimit the reasoning block in Gemma 4. These are used by the sampling loop
+to detect and enforce token budgets on the <|channel>thought<channel|>
+thinking channel, preventing infinite generation loops.
+"""
 
 from __future__ import annotations
 
